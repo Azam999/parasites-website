@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ImageUploading from 'react-images-uploading';
 import {
     Container,
@@ -7,16 +7,62 @@ import {
     ToggleButton,
 } from 'react-bootstrap';
 import styles from '../styles/Screening.module.css';
+import axios from 'axios';
+import { encode as base64_encode } from 'base-64';
 
 const Screening: React.FC = () => {
-    const [images, setImages] = React.useState([]);
-    const maxNumber = 69;
+    const [images, setImages] = useState([]);
+    const [prediction, setPrediction] = useState([{
+        xmin: 0,
+        ymin: 0,
+        xmax: 0,
+        ymax: 0,
+        confidence: 0,
+        class: 0,
+        name: '',
+    }]);
+    const [bboxImage, setBboxImage] = useState('');
+
+    const maxNumber = 1;
 
     const onChange = (imageList: any, addUpdateIndex: any) => {
         // data for submit
         console.log(imageList, addUpdateIndex);
         setImages(imageList);
     };
+
+    const onSubmit = (e: any) => {
+        e.preventDefault();
+
+        console.log(images[0]);
+
+        const formData = new FormData();
+        formData.append('image', (images[0] as any).file);
+        
+        axios.post('http://localhost:4001/v1/object-detection/predict', formData)
+            .then(res => setPrediction(res.data))
+            .catch(err => console.log(err));
+    }
+
+    const getBboxImage = (e: any) => {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append('input_image', (images[0] as any).file);
+
+        axios.post(`http://localhost:4001/v1/object-detection/image?bbox=${prediction[0].xmin},${prediction[0].ymin},${prediction[0].xmax},${prediction[0].ymax}`, formData, {
+            responseEncoding: 'binary',
+            responseType: 'arraybuffer',
+        })
+            .then(res => {
+                // console.log(res.data)
+                let b64Image = Buffer.from(res.data).toString('base64');
+                let b64Path = 'data:image/jpeg;base64,' + b64Image;
+                console.log(b64Path);
+                setBboxImage(b64Path);
+            })
+            .catch(err => console.log(err));
+    }
 
     return (
         <Container>
@@ -94,13 +140,32 @@ const Screening: React.FC = () => {
                                             ✕
                                         </Button>
                                     </div>
-                                    <Button variant="info" className={styles.imageButton}>Get Prediction</Button>
+                                    <Button variant="info" className={styles.imageButton} onClick={(e) => onSubmit(e)}>Get Prediction</Button>
+                                    <Button variant="info" className={styles.imageButton} onClick={(e) => getBboxImage(e)}>Get Bbox Image</Button>
                                 </div>
                             ))}
                         </div>
                         <div className={styles.prediction}>
-                            <h4 className={styles.predictionText}></h4>
+                            <div className={styles.predictionText}>
+                                <b>Parasite Type</b>
+                                <br />
+                                {prediction ? prediction[0]['name'] : "None"}
+                                <br />
+                                <br />
+                                <b>Confidence</b>
+                                <br />
+                                {prediction ? Math.round(prediction[0]['confidence'] * 10000)/100 : "None"}
+                            </div>
                         </div>
+                        {
+                            bboxImage !== '' ? (
+                                <img
+                                    src={bboxImage}
+                                    alt="bbox image"
+                                    className={styles.uploadedImage}
+                                />
+                            ) : null
+                        }
                     </div>
                 )}
             </ImageUploading>
